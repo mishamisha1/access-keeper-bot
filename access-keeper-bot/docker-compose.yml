@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: access-keeper-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ALLOWED_TELEGRAM_USER_IDS=${ALLOWED_TELEGRAM_USER_IDS}
+      - GOOGLE_CLIENT_SECRET_PATH=/app/client_secret.json
+      - GOOGLE_TOKEN_PATH=/app/data/token.json
+      - DB_PATH=/app/data/access_keeper.db
+      - DEFAULT_SPREADSHEET_ID=${DEFAULT_SPREADSHEET_ID:-}
+      - DEFAULT_SHEET_NAME=${DEFAULT_SHEET_NAME:-Временные доступы}
+      - DEFAULT_CALENDAR_ID=${DEFAULT_CALENDAR_ID:-primary}
+      - TIMEZONE=${TIMEZONE:-Asia/Almaty}
+      - DEFAULT_EVENT_HOUR=${DEFAULT_EVENT_HOUR:-9}
+      - DEFAULT_EVENT_MINUTE=${DEFAULT_EVENT_MINUTE:-0}
+      - DEFAULT_REMINDER_DAYS=${DEFAULT_REMINDER_DAYS:-1,0}
+      - DEFAULT_ACCESS_ACTION=${DEFAULT_ACCESS_ACTION:-Забрать доступ}
+      - RATE_LIMIT_SECONDS=${RATE_LIMIT_SECONDS:-3}
+    volumes:
+      - ./data:/app/data
+      - ./client_secret.json:/app/client_secret.json:ro
+    stdin_open: true
+    tty: true
