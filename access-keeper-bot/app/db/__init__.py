@@ -1,6 +1,14 @@
 """Модуль инициализации пакета db."""
 
-from app.db.database import Database
-from app.db.models import AccessRecord, ParsedAccessRequest, ColumnMapping
+from app.db.database import Database, db
+from app.db.models import User, SavedSheet, Settings, CreatedRecord, AccessHistoryEntry
 
-__all__ = ["Database", "AccessRecord", "ParsedAccessRequest", "ColumnMapping"]
+__all__ = [
+    "Database",
+    "db",
+    "User",
+    "SavedSheet",
+    "Settings",
+    "CreatedRecord",
+    "AccessHistoryEntry",
+]

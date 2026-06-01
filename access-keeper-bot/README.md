@@ -1,210 +1,177 @@
 # Access Keeper Bot
 
-Telegram-бот для автоматизации матриц доступа, выдачи временных доступов, заполнения Google Sheets и создания напоминаний в Google Calendar.
+Telegram бот для управления матрицами доступов с интеграцией Google Sheets и Google Calendar. Соответствует требованиям ISO 27001-27005.
 
-## 📋 Описание
+## Возможности
 
-Бот помогает ИБ-специалистам управлять матрицами доступа:
-- Создавать Google Sheets таблицы под матрицы доступа
-- Добавлять временные доступы из текста
-- Импортировать данные из файлов (Excel, CSV, DOCX, PDF)
-- Создавать события в Google Calendar с напоминаниями
-- Отслеживать истекающие и просроченные доступы
-- Продлевать и отзывать доступы
+- 📊 **Создание матриц доступа** - 6 предустановленных шаблонов (простая, расширенная, по ролям, ревью, PCI DSS/ISO, временные доступы)
+- ➕ **Быстрое добавление доступов** - Парсинг свободного текста с помощью NLP
+- 📁 **Импорт из файлов** - Поддержка Excel, CSV, DOCX, PDF
+- ⏰ **Автоматические напоминания** - Интеграция с Google Calendar для отзыва временных доступов
+- 🔴 **Отзыв и продление** - Управление жизненным циклом доступов
+- 📋 **История изменений** - Полное логирование всех действий
+- 🔐 **Безопасность** - Шифрование чувствительных данных, контроль доступа по Telegram ID
 
-## 🔧 Установка
+## Требования
 
-### 1. Создание Telegram-бота
+- Python 3.10+
+- Telegram Bot Token
+- Google Cloud Project с включенными API:
+  - Google Sheets API
+  - Google Calendar API
+  - Google Drive API
 
-1. Откройте [@BotFather](https://t.me/BotFather) в Telegram
-2. Отправьте команду `/newbot`
-3. Придумайте имя и username для бота
-4. Скопируйте полученный токен
+## Установка
 
-### 2. Узнайте свой Telegram User ID
+### 1. Клонирование репозитория
 
-1. Откройте бота [@userinfobot](https://t.me/userinfobot)
-2. Нажмите Start
-3. Скопируйте ваш User ID (число)
+```bash
+git clone <repository-url>
+cd access-keeper-bot
+```
 
-### 3. Настройка Google API
+### 2. Создание виртуального окружения
 
-1. Откройте [Google Cloud Console](https://console.cloud.google.com/)
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# или
+.venv\Scripts\activate  # Windows
+```
+
+### 3. Установка зависимостей
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Настройка конфигурации
+
+```bash
+cp .env.example .env
+```
+
+Откройте `.env` и заполните:
+
+```ini
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+ALLOWED_TELEGRAM_USER_IDS=123456789,987654321
+ENCRYPTION_KEY=change_this_to_a_secure_random_string_32_chars
+```
+
+### 5. Настройка Google OAuth
+
+#### Шаг 5.1: Создание проекта в Google Cloud Console
+
+1. Перейдите в [Google Cloud Console](https://console.cloud.google.com/)
 2. Создайте новый проект или выберите существующий
 3. Включите API:
    - Google Sheets API
-   - Google Drive API
    - Google Calendar API
-4. Создайте OAuth 2.0 Client ID:
-   - Перейдите в "APIs & Services" → "Credentials"
-   - Нажмите "Create Credentials" → "OAuth client ID"
-   - Выберите "Desktop app"
-   - Скачайте файл `client_secret.json`
-5. Положите `client_secret.json` в корень проекта
+   - Google Drive API
 
-### 4. Настройка переменных окружения
+#### Шаг 5.2: Создание учетных данных
 
-```bash
-cp .env.example .env
-```
+1. Перейдите в "APIs & Services" → "Credentials"
+2. Нажмите "Create Credentials" → "OAuth client ID"
+3. Выберите тип приложения "Desktop app"
+4. Скачайте файл `client_secret.json`
+5. Поместите файл в корень проекта
 
-Заполните `.env`:
-
-```env
-TELEGRAM_BOT_TOKEN=ваш_токен_от_botfather
-ALLOWED_TELEGRAM_USER_IDS=ваш_user_id
-
-GOOGLE_CLIENT_SECRET_PATH=client_secret.json
-GOOGLE_TOKEN_PATH=token.json
-
-DB_PATH=data/access_keeper.db
-
-DEFAULT_SPREADSHEET_ID=
-DEFAULT_SHEET_NAME=Временные доступы
-DEFAULT_CALENDAR_ID=primary
-
-TIMEZONE=Asia/Almaty
-DEFAULT_EVENT_HOUR=9
-DEFAULT_EVENT_MINUTE=0
-DEFAULT_REMINDER_DAYS=1,0
-DEFAULT_ACCESS_ACTION=Забрать доступ
-
-RATE_LIMIT_SECONDS=3
-```
-
-## 🚀 Запуск
-
-### Локальный запуск
+#### Шаг 5.3: Получение токена
 
 ```bash
-# Создаём виртуальное окружение
-python -m venv .venv
-
-# Активируем
-# Linux/Mac:
-source .venv/bin/activate
-# Windows:
-.venv\Scripts\activate
-
-# Устанавливаем зависимости
-pip install -r requirements.txt
-
-# Первая авторизация Google (интерактивная)
 python -m app.google_auth_setup
+```
 
-# Запускаем бота
+Следуйте инструкциям скрипта:
+1. Откройте URL в браузере
+2. Войдите в Google аккаунт
+3. Предоставьте доступ к API
+4. Скопируйте код авторизации
+5. Вставьте код в терминал
+
+## Запуск бота
+
+```bash
 python -m app.main
 ```
 
-### Запуск через Docker
+## Использование
 
-```bash
-# Копируем .env.example в .env и заполняем
-cp .env.example .env
+### Команды бота
 
-# Кладём client_secret.json в корень проекта
-
-# Запускаем
-docker-compose up --build
-```
-
-## 📖 Использование
-
-### Основные команды
-
-- `/start` - Запустить бота
-- `/help` - Показать справку
-- `/access <текст>` - Быстро добавить временный доступ
-- `/new_matrix` - Создать новую матрицу
-- `/grant_access` - Пошаговое добавление доступа
-- `/revoke_access` - Отозвать доступ
-- `/extend_access` - Продлить доступ
-- `/access_due` - Показать истекающие доступы
-- `/access_overdue` - Показать просроченные доступы
-- `/import_file` - Импорт из файла
-- `/bind_sheet` - Привязать таблицу
-- `/my_sheets` - Мои таблицы
-- `/settings` - Настройки
+| Команда | Описание |
+|---------|----------|
+| `/start` | Запустить бота |
+| `/help` | Справка по командам |
+| `/access <текст>` | Быстро добавить доступ |
+| `/new_matrix` | Создать новую матрицу |
+| `/my_sheets` | Список сохраненных таблиц |
+| `/settings` | Настройки бота |
+| `/templates` | Просмотр шаблонов |
 
 ### Примеры использования /access
 
 ```
-/access Саксонов Михаил, доступ на 2 недели, основание: совместная работа с разработчиками
-
+/access Саксонов Михаил, доступ на 2 недели, основание: совместная работа
 /access Иванов Иван, Jira read-only на 3 дня, причина: задача DEV-123
-
 /access Петров Петр, Splunk admin на месяц, основание INC-12345
-
-/access Сидорова Анна, доступ до пятницы, причина: аудит логов
 ```
 
-### Первый запуск и авторизация
+### Шаблоны матриц
 
-При первом запуске нужно авторизоваться в Google:
+1. **Простая матрица** - Базовый учет доступов
+2. **Расширенная матрица** - Детальные права и ревью
+3. **Матрица по ролям** - Соответствие ролей и модулей
+4. **Ревью доступов** - Проведение регулярного ревью
+5. **PCI DSS / ISO** - Compliance проверки
+6. **Временные доступы** - Автоматический отзыв по сроку
 
-```bash
-python -m app.google_auth_setup
-```
-
-Бот выдаст ссылку. Откройте её в браузере, разрешите доступ, скопируйте код и вставьте в консоль.
-
-Токен сохранится в `data/token.json`.
-
-## 📁 Структура проекта
+## Структура проекта
 
 ```
 access-keeper-bot/
 ├── app/
-│   ├── main.py              # Точка входа
-│   ├── config.py            # Конфигурация
-│   ├── logging_config.py    # Логирование
-│   ├── bot/
-│   │   ├── handlers.py      # Обработчики команд
-│   │   ├── keyboards.py     # Клавиатуры
-│   │   └── states.py        # FSM состояния
-│   ├── google/
-│   │   ├── auth.py          # OAuth авторизация
-│   │   ├── sheets.py        # Google Sheets API
-│   │   └── calendar.py      # Google Calendar API
-│   ├── parsers/
-│   │   ├── text_parser.py   # Парсер текста
-│   │   └── file_parser.py   # Парсер файлов
-│   ├── services/
-│   │   ├── access_service.py # Сервис доступов
-│   │   └── date_service.py   # Сервис дат
-│   ├── templates/           # Шаблоны матриц
-│   └── db/
-│       ├── database.py      # SQLite БД
-│       └── models.py        # Модели данных
-├── data/                    # Данные (токены, БД)
-├── requirements.txt         # Зависимости
-├── Dockerfile              # Docker образ
-├── docker-compose.yml      # Docker Compose
-├── .env.example            # Шаблон переменных
-└── README.md               # Этот файл
+│   ├── bot/              # Telegram бот (handlers, keyboards, states)
+│   ├── db/               # База данных (models, database)
+│   ├── google/           # Google API (auth, sheets, calendar)
+│   ├── parsers/          # Парсеры (text_parser)
+│   ├── services/         # Бизнес-логика (access_service, date_service)
+│   ├── templates/        # Шаблоны матриц
+│   ├── config.py         # Конфигурация
+│   ├── logging_config.py # Настройка логирования
+│   ├── main.py           # Точка входа
+│   └── google_auth_setup.py # Скрипт настройки OAuth
+├── data/                 # Данные (БД, токены, логи)
+├── .env                  # Переменные окружения
+├── .env.example          # Пример конфигурации
+├── requirements.txt      # Зависимости
+└── README.md            # Документация
 ```
 
-## 🔒 Безопасность
+## Соответствие ISO 27001
 
-- `client_secret.json` и `token.json` не хранятся в репозитории
-- `.env` файл в `.gitignore`
-- Доступ только для разрешённых Telegram User IDs
-- Rate limiting для защиты от спама
+| Контроль | Реализация |
+|----------|------------|
+| A.8.2 | Классификация информации в матрицах |
+| A.9.4 | Управление доступом пользователей |
+| A.10.1.1 | Шифрование чувствительных данных |
+| A.12.3 | Резервное копирование (Google Sheets) |
+| A.12.4 | Логирование и мониторинг действий |
 
-## ⚠️ Частые ошибки
+## Безопасность
 
-### "Google не авторизован"
-Запустите `python -m app.google_auth_setup` для авторизации.
+- ✅ Проверка Telegram User ID перед каждым запросом
+- ✅ Шифрование чувствительных данных (Fernet)
+- ✅ Маскировка секретов в логах
+- ✅ Безопасное хранение токенов (права 600)
+- ✅ Rate limiting для предотвращения злоупотреблений
 
-### "Таблица не найдена"
-Используйте `/bind_sheet` для привязки таблицы.
+## Лицензия
 
-### "Доступ запрещён"
-Проверьте `ALLOWED_TELEGRAM_USER_IDS` в `.env`.
+MIT License
 
-### Ошибки Google API
-Проверьте, что включены нужные API в Google Cloud Console.
+## Контакты
 
-## 📝 Лицензия
-
-MIT
+Для вопросов и предложений создавайте Issues в репозитории.

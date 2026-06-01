@@ -20,26 +20,11 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
+# Virtual Environment
 .venv/
 venv/
 ENV/
 env/
-
-# Environment variables
-.env
-!.env.example
-
-# Google OAuth tokens
-token.json
-client_secret.json
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-data/*.db
-data/*.sqlite
 
 # IDE
 .idea/
@@ -48,18 +33,37 @@ data/*.sqlite
 *.swo
 *~
 
+# Environment variables
+.env
+.env.local
+
+# Google OAuth
+client_secret.json
+token.json
+data/token.json
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/*.sqlite
+
+# Logs
+*.log
+data/*.log
+logs/
+
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
-logs/
+# Temporary files
+tmp/
+temp/
+*.tmp
 
 # Test coverage
 htmlcov/
 .coverage
 .pytest_cache/
-
-# Docker
-docker-compose.override.yml

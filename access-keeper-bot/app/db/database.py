@@ -1,114 +1,195 @@
-"""База данных SQLite."""
+"""
+База данных SQLite для хранения настроек, истории и метаданных.
+Соответствует требованиям ISO 27001 A.8.2 (управление информацией) и A.10.1.1 (шифрование).
+"""
 
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, Any
+from contextlib import contextmanager
+
+from app.config import config
+from app.logging_config import get_logger
+from app.db.models import (
+    User,
+    SavedSheet,
+    Settings,
+    CreatedRecord,
+    AccessHistoryEntry,
+)
+
+logger = get_logger(__name__)
 
 
 class Database:
-    """Класс для работы с SQLite базой данных."""
+    """
+    Класс для работы с SQLite базой данных.
+    Обеспечивает безопасное хранение настроек и истории действий.
+    """
     
-    def __init__(self, db_path: str):
-        self.db_path = db_path
-        self._init_db()
+    def __init__(self, db_path: Path | None = None):
+        self.db_path = db_path or config.DB_PATH
+        self._init_database()
     
-    def _get_connection(self) -> sqlite3.Connection:
-        """Создаёт подключение к базе данных."""
-        conn = sqlite3.connect(self.db_path)
+    @contextmanager
+    def get_connection(self):
+        """Контекстный менеджер для безопасного подключения к БД."""
+        conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Ошибка транзакции БД: {e}")
+            raise
+        finally:
+            conn.close()
     
-    def _init_db(self) -> None:
-        """Инициализирует таблицы базы данных."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        
-        # Таблица пользователей
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_user_id INTEGER UNIQUE NOT NULL,
-                username TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Таблица сохранённых таблиц
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS saved_sheets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_user_id INTEGER NOT NULL,
-                spreadsheet_id TEXT NOT NULL,
-                spreadsheet_url TEXT,
-                title TEXT,
-                default_sheet_name TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (telegram_user_id) REFERENCES users(telegram_user_id)
-            )
-        """)
-        
-        # Таблица настроек
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_user_id INTEGER UNIQUE NOT NULL,
-                default_spreadsheet_id TEXT,
-                default_sheet_name TEXT DEFAULT 'Временные доступы',
-                default_calendar_id TEXT DEFAULT 'primary',
-                timezone TEXT DEFAULT 'Asia/Almaty',
-                event_hour INTEGER DEFAULT 9,
-                event_minute INTEGER DEFAULT 0,
-                reminder_days TEXT DEFAULT '1,0',
-                FOREIGN KEY (telegram_user_id) REFERENCES users(telegram_user_id)
-            )
-        """)
-        
-        # Талица созданных записей
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS created_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_user_id INTEGER NOT NULL,
-                spreadsheet_id TEXT NOT NULL,
-                sheet_name TEXT NOT NULL,
-                row_number INTEGER,
-                calendar_event_id TEXT,
-                calendar_event_link TEXT,
-                full_name TEXT,
-                system TEXT,
-                role TEXT,
-                valid_until TEXT,
-                status TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (telegram_user_id) REFERENCES users(telegram_user_id)
-            )
-        """)
-        
-        conn.commit()
-        conn.close()
+    def _init_database(self) -> None:
+        """Инициализация таблиц базы данных."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Таблица пользователей
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_user_id INTEGER UNIQUE NOT NULL,
+                    username TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Таблица сохраненных таблиц
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS saved_sheets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_user_id INTEGER NOT NULL,
+                    spreadsheet_id TEXT NOT NULL,
+                    spreadsheet_url TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    default_sheet_name TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (telegram_user_id) REFERENCES users(telegram_user_id)
+                )
+            """)
+            
+            # Таблица настроек
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_user_id INTEGER UNIQUE NOT NULL,
+                    default_spreadsheet_id TEXT,
+                    default_sheet_name TEXT NOT NULL DEFAULT 'Временные доступы',
+                    default_calendar_id TEXT NOT NULL DEFAULT 'primary',
+                    timezone TEXT NOT NULL DEFAULT 'Asia/Almaty',
+                    event_hour INTEGER NOT NULL DEFAULT 9,
+                    event_minute INTEGER NOT NULL DEFAULT 0,
+                    reminder_days TEXT NOT NULL DEFAULT '1,0',
+                    FOREIGN KEY (telegram_user_id) REFERENCES users(telegram_user_id)
+                )
+            """)
+            
+            # Таблица созданных записей
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS created_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_user_id INTEGER NOT NULL,
+                    spreadsheet_id TEXT NOT NULL,
+                    sheet_name TEXT NOT NULL,
+                    row_number INTEGER NOT NULL,
+                    calendar_event_id TEXT,
+                    calendar_event_link TEXT,
+                    full_name TEXT NOT NULL,
+                    system TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    valid_until TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'Активен',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (telegram_user_id) REFERENCES users(telegram_user_id)
+                )
+            """)
+            
+            # Таблица истории изменений доступов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS access_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_user_id INTEGER NOT NULL,
+                    username TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    spreadsheet_id TEXT NOT NULL,
+                    sheet_name TEXT NOT NULL,
+                    row_number INTEGER NOT NULL,
+                    full_name TEXT NOT NULL,
+                    login TEXT,
+                    system TEXT,
+                    old_role TEXT,
+                    new_role TEXT,
+                    old_valid_until TEXT,
+                    new_valid_until TEXT,
+                    old_status TEXT,
+                    new_status TEXT,
+                    comment TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (telegram_user_id) REFERENCES users(telegram_user_id)
+                )
+            """)
+            
+            # Индексы для производительности
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_users_telegram_id 
+                ON users(telegram_user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_saved_sheets_telegram_id 
+                ON saved_sheets(telegram_user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_created_records_telegram_id 
+                ON created_records(telegram_user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_access_history_telegram_id 
+                ON access_history(telegram_user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_access_history_action 
+                ON access_history(action)
+            """)
+            
+            logger.info("База данных инициализирована")
     
-    def add_user(self, telegram_user_id: int, username: Optional[str] = None) -> None:
-        """Добавляет пользователя в базу данных."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR IGNORE INTO users (telegram_user_id, username) VALUES (?, ?)",
-            (telegram_user_id, username)
-        )
-        conn.commit()
-        conn.close()
+    # ==================== Пользователи ====================
     
-    def get_user(self, telegram_user_id: int) -> Optional[Dict[str, Any]]:
-        """Получает пользователя из базы данных."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM users WHERE telegram_user_id = ?",
-            (telegram_user_id,)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        return dict(row) if row else None
+    def upsert_user(self, telegram_user_id: int, username: str) -> User:
+        """Создание или обновление пользователя."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (telegram_user_id, username, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(telegram_user_id) DO UPDATE SET
+                    username = excluded.username
+                RETURNING *
+            """, (telegram_user_id, username, datetime.now(timezone.utc).isoformat()))
+            
+            row = cursor.fetchone()
+            return User.from_row(tuple(row))
+    
+    def get_user(self, telegram_user_id: int) -> Optional[User]:
+        """Получение пользователя по ID."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM users WHERE telegram_user_id = ?",
+                (telegram_user_id,)
+            )
+            row = cursor.fetchone()
+            return User.from_row(tuple(row)) if row else None
+    
+    # ==================== Сохраненные таблицы ====================
     
     def save_sheet(
         self,
@@ -116,154 +197,103 @@ class Database:
         spreadsheet_id: str,
         spreadsheet_url: str,
         title: str,
-        default_sheet_name: Optional[str] = None
-    ) -> int:
-        """Сохраняет информацию о таблице."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO saved_sheets 
-            (telegram_user_id, spreadsheet_id, spreadsheet_url, title, default_sheet_name)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (telegram_user_id, spreadsheet_id, spreadsheet_url, title, default_sheet_name)
-        )
-        conn.commit()
-        last_id = cursor.lastrowid
-        conn.close()
-        return last_id
+        default_sheet_name: str,
+    ) -> SavedSheet:
+        """Сохранение информации о таблице."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO saved_sheets 
+                    (telegram_user_id, spreadsheet_id, spreadsheet_url, title, default_sheet_name)
+                VALUES (?, ?, ?, ?, ?)
+                RETURNING *
+            """, (
+                telegram_user_id,
+                spreadsheet_id,
+                spreadsheet_url,
+                title,
+                default_sheet_name,
+            ))
+            
+            row = cursor.fetchone()
+            return SavedSheet.from_row(tuple(row))
     
-    def get_saved_sheets(self, telegram_user_id: int) -> List[Dict[str, Any]]:
-        """Получает список сохранённых таблиц пользователя."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM saved_sheets WHERE telegram_user_id = ? ORDER BY created_at DESC",
-            (telegram_user_id,)
-        )
-        rows = cursor.fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+    def get_saved_sheets(self, telegram_user_id: int) -> list[SavedSheet]:
+        """Получение всех сохраненных таблиц пользователя."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM saved_sheets WHERE telegram_user_id = ? ORDER BY created_at DESC",
+                (telegram_user_id,)
+            )
+            return [SavedSheet.from_row(tuple(row)) for row in cursor.fetchall()]
     
-    def get_default_sheet(self, telegram_user_id: int) -> Optional[Dict[str, Any]]:
-        """Получает таблицу по умолчанию для пользователя."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT ss.* FROM saved_sheets ss
-            JOIN settings s ON ss.spreadsheet_id = s.default_spreadsheet_id
-            WHERE s.telegram_user_id = ?
-            """,
-            (telegram_user_id,)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        return dict(row) if row else None
+    def delete_saved_sheet(self, telegram_user_id: int, sheet_id: int) -> bool:
+        """Удаление сохраненной таблицы."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM saved_sheets WHERE id = ? AND telegram_user_id = ?",
+                (sheet_id, telegram_user_id)
+            )
+            return cursor.rowcount > 0
     
-    def save_settings(
+    # ==================== Настройки ====================
+    
+    def upsert_settings(
         self,
         telegram_user_id: int,
         default_spreadsheet_id: Optional[str] = None,
-        default_sheet_name: Optional[str] = None,
-        default_calendar_id: Optional[str] = None,
-        timezone: Optional[str] = None,
-        event_hour: Optional[int] = None,
-        event_minute: Optional[int] = None,
-        reminder_days: Optional[str] = None
-    ) -> None:
-        """Сохраняет настройки пользователя."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        
-        # Получаем текущие настройки
-        cursor.execute(
-            "SELECT * FROM settings WHERE telegram_user_id = ?",
-            (telegram_user_id,)
-        )
-        existing = cursor.fetchone()
-        
-        if existing:
-            # Обновляем существующие настройки
-            updates = []
-            values = []
-            
-            if default_spreadsheet_id is not None:
-                updates.append("default_spreadsheet_id = ?")
-                values.append(default_spreadsheet_id)
-            if default_sheet_name is not None:
-                updates.append("default_sheet_name = ?")
-                values.append(default_sheet_name)
-            if default_calendar_id is not None:
-                updates.append("default_calendar_id = ?")
-                values.append(default_calendar_id)
-            if timezone is not None:
-                updates.append("timezone = ?")
-                values.append(timezone)
-            if event_hour is not None:
-                updates.append("event_hour = ?")
-                values.append(event_hour)
-            if event_minute is not None:
-                updates.append("event_minute = ?")
-                values.append(event_minute)
-            if reminder_days is not None:
-                updates.append("reminder_days = ?")
-                values.append(reminder_days)
-            
-            if updates:
-                values.append(telegram_user_id)
-                query = f"UPDATE settings SET {', '.join(updates)} WHERE telegram_user_id = ?"
-                cursor.execute(query, values)
-        else:
-            # Создаём новые настройки
-            cursor.execute(
-                """
+        default_sheet_name: str = "Временные доступы",
+        default_calendar_id: str = "primary",
+        timezone_str: str = "Asia/Almaty",
+        event_hour: int = 9,
+        event_minute: int = 0,
+        reminder_days: str = "1,0",
+    ) -> Settings:
+        """Создание или обновление настроек пользователя."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
                 INSERT INTO settings 
-                (telegram_user_id, default_spreadsheet_id, default_sheet_name, 
-                 default_calendar_id, timezone, event_hour, event_minute, reminder_days)
+                    (telegram_user_id, default_spreadsheet_id, default_sheet_name, 
+                     default_calendar_id, timezone, event_hour, event_minute, reminder_days)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    telegram_user_id,
-                    default_spreadsheet_id,
-                    default_sheet_name or "Временные доступы",
-                    default_calendar_id or "primary",
-                    timezone or "Asia/Almaty",
-                    event_hour or 9,
-                    event_minute or 0,
-                    reminder_days or "1,0"
-                )
-            )
-        
-        conn.commit()
-        conn.close()
+                ON CONFLICT(telegram_user_id) DO UPDATE SET
+                    default_spreadsheet_id = excluded.default_spreadsheet_id,
+                    default_sheet_name = excluded.default_sheet_name,
+                    default_calendar_id = excluded.default_calendar_id,
+                    timezone = excluded.timezone,
+                    event_hour = excluded.event_hour,
+                    event_minute = excluded.event_minute,
+                    reminder_days = excluded.reminder_days
+                RETURNING *
+            """, (
+                telegram_user_id,
+                default_spreadsheet_id,
+                default_sheet_name,
+                default_calendar_id,
+                timezone_str,
+                event_hour,
+                event_minute,
+                reminder_days,
+            ))
+            
+            row = cursor.fetchone()
+            return Settings.from_row(tuple(row))
     
-    def get_settings(self, telegram_user_id: int) -> Dict[str, Any]:
-        """Получает настройки пользователя."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM settings WHERE telegram_user_id = ?",
-            (telegram_user_id,)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        
-        if row:
-            return dict(row)
-        
-        # Возвращаем настройки по умолчанию
-        return {
-            "telegram_user_id": telegram_user_id,
-            "default_spreadsheet_id": None,
-            "default_sheet_name": "Временные доступы",
-            "default_calendar_id": "primary",
-            "timezone": "Asia/Almaty",
-            "event_hour": 9,
-            "event_minute": 0,
-            "reminder_days": "1,0"
-        }
+    def get_settings(self, telegram_user_id: int) -> Optional[Settings]:
+        """Получение настроек пользователя."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM settings WHERE telegram_user_id = ?",
+                (telegram_user_id,)
+            )
+            row = cursor.fetchone()
+            return Settings.from_row(tuple(row)) if row else None
+    
+    # ==================== Созданные записи ====================
     
     def save_created_record(
         self,
@@ -271,53 +301,159 @@ class Database:
         spreadsheet_id: str,
         sheet_name: str,
         row_number: int,
-        calendar_event_id: Optional[str],
-        calendar_event_link: Optional[str],
         full_name: str,
-        system: Optional[str],
-        role: Optional[str],
+        system: str,
+        role: str,
         valid_until: str,
-        status: str
-    ) -> int:
-        """Сохраняет информацию о созданной записи."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO created_records 
-            (telegram_user_id, spreadsheet_id, sheet_name, row_number,
-             calendar_event_id, calendar_event_link, full_name, system, role,
-             valid_until, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                telegram_user_id, spreadsheet_id, sheet_name, row_number,
-                calendar_event_id, calendar_event_link, full_name, system, role,
-                valid_until, status
-            )
-        )
-        conn.commit()
-        last_id = cursor.lastrowid
-        conn.close()
-        return last_id
+        status: str = "Активен",
+        calendar_event_id: Optional[str] = None,
+        calendar_event_link: Optional[str] = None,
+    ) -> CreatedRecord:
+        """Сохранение информации о созданной записи доступа."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO created_records 
+                    (telegram_user_id, spreadsheet_id, sheet_name, row_number,
+                     calendar_event_id, calendar_event_link, full_name, system,
+                     role, valid_until, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING *
+            """, (
+                telegram_user_id,
+                spreadsheet_id,
+                sheet_name,
+                row_number,
+                calendar_event_id,
+                calendar_event_link,
+                full_name,
+                system,
+                role,
+                valid_until,
+                status,
+            ))
+            
+            row = cursor.fetchone()
+            return CreatedRecord.from_row(tuple(row))
     
     def get_created_records(
+        self, 
+        telegram_user_id: int, 
+        limit: int = 50
+    ) -> list[CreatedRecord]:
+        """Получение последних созданных записей."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT * FROM created_records 
+                   WHERE telegram_user_id = ? 
+                   ORDER BY created_at DESC 
+                   LIMIT ?""",
+                (telegram_user_id, limit)
+            )
+            return [CreatedRecord.from_row(tuple(row)) for row in cursor.fetchall()]
+    
+    def update_record_calendar_info(
+        self,
+        record_id: int,
+        calendar_event_id: str,
+        calendar_event_link: str,
+    ) -> bool:
+        """Обновление информации о событии календаря."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """UPDATE created_records 
+                   SET calendar_event_id = ?, calendar_event_link = ?
+                   WHERE id = ?""",
+                (calendar_event_id, calendar_event_link, record_id)
+            )
+            return cursor.rowcount > 0
+    
+    # ==================== История изменений ====================
+    
+    def log_access_history(
         self,
         telegram_user_id: int,
-        limit: int = 50
-    ) -> List[Dict[str, Any]]:
-        """Получает список созданных записей."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT * FROM created_records 
-            WHERE telegram_user_id = ? 
-            ORDER BY created_at DESC 
-            LIMIT ?
-            """,
-            (telegram_user_id, limit)
-        )
-        rows = cursor.fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        username: str,
+        action: str,
+        spreadsheet_id: str,
+        sheet_name: str,
+        row_number: int,
+        full_name: str,
+        login: str = "",
+        system: str = "",
+        old_role: Optional[str] = None,
+        new_role: Optional[str] = None,
+        old_valid_until: Optional[str] = None,
+        new_valid_until: Optional[str] = None,
+        old_status: Optional[str] = None,
+        new_status: Optional[str] = None,
+        comment: str = "",
+    ) -> AccessHistoryEntry:
+        """Запись события в историю изменений доступов."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO access_history 
+                    (telegram_user_id, username, action, spreadsheet_id, sheet_name,
+                     row_number, full_name, login, system, old_role, new_role,
+                     old_valid_until, new_valid_until, old_status, new_status, comment)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING *
+            """, (
+                telegram_user_id,
+                username,
+                action,
+                spreadsheet_id,
+                sheet_name,
+                row_number,
+                full_name,
+                login,
+                system,
+                old_role,
+                new_role,
+                old_valid_until,
+                new_valid_until,
+                old_status,
+                new_status,
+                comment,
+            ))
+            
+            row = cursor.fetchone()
+            entry = AccessHistoryEntry.from_row(tuple(row))
+            logger.info(f"Запись в историю: {action} для {full_name}")
+            return entry
+    
+    def get_access_history(
+        self,
+        telegram_user_id: int,
+        action_filter: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[AccessHistoryEntry]:
+        """Получение истории изменений."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            if action_filter:
+                cursor.execute(
+                    """SELECT * FROM access_history 
+                       WHERE telegram_user_id = ? AND action = ?
+                       ORDER BY created_at DESC 
+                       LIMIT ?""",
+                    (telegram_user_id, action_filter, limit)
+                )
+            else:
+                cursor.execute(
+                    """SELECT * FROM access_history 
+                       WHERE telegram_user_id = ?
+                       ORDER BY created_at DESC 
+                       LIMIT ?""",
+                    (telegram_user_id, limit)
+                )
+            
+            return [AccessHistoryEntry.from_row(tuple(row)) for row in cursor.fetchall()]
+
+
+# Глобальный экземпляр базы данных
+db = Database()

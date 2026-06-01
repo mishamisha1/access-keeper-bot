@@ -1,154 +1,161 @@
-"""Модели данных."""
+"""
+Модели данных для SQLite базы данных.
+Соответствует требованиям ISO 27001 A.8.2 (управление информацией).
+"""
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional, List, Dict, Any
+import sqlite3
+from datetime import datetime, timezone
+from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
-class AccessRecord:
-    """Запись о доступе."""
+class User:
+    """Модель пользователя Telegram."""
+    id: Optional[int]
+    telegram_user_id: int
+    username: str
+    created_at: datetime
+    
+    @classmethod
+    def from_row(cls, row: tuple) -> "User":
+        return cls(
+            id=row[0],
+            telegram_user_id=row[1],
+            username=row[2],
+            created_at=datetime.fromisoformat(row[3]) if row[3] else datetime.now(timezone.utc),
+        )
+
+
+@dataclass
+class SavedSheet:
+    """Модель сохраненной Google Sheets таблицы."""
+    id: Optional[int]
+    telegram_user_id: int
+    spreadsheet_id: str
+    spreadsheet_url: str
+    title: str
+    default_sheet_name: str
+    created_at: datetime
+    
+    @classmethod
+    def from_row(cls, row: tuple) -> "SavedSheet":
+        return cls(
+            id=row[0],
+            telegram_user_id=row[1],
+            spreadsheet_id=row[2],
+            spreadsheet_url=row[3],
+            title=row[4],
+            default_sheet_name=row[5],
+            created_at=datetime.fromisoformat(row[6]) if row[6] else datetime.now(timezone.utc),
+        )
+
+
+@dataclass
+class Settings:
+    """Модель настроек пользователя."""
+    id: Optional[int]
+    telegram_user_id: int
+    default_spreadsheet_id: Optional[str]
+    default_sheet_name: str
+    default_calendar_id: str
+    timezone: str
+    event_hour: int
+    event_minute: int
+    reminder_days: str  # CSV формат: "1,0"
+    
+    @classmethod
+    def from_row(cls, row: tuple) -> "Settings":
+        return cls(
+            id=row[0],
+            telegram_user_id=row[1],
+            default_spreadsheet_id=row[2],
+            default_sheet_name=row[3],
+            default_calendar_id=row[4],
+            timezone=row[5],
+            event_hour=row[6],
+            event_minute=row[7],
+            reminder_days=row[8],
+        )
+
+
+@dataclass
+class CreatedRecord:
+    """Модель созданной записи доступа."""
+    id: Optional[int]
+    telegram_user_id: int
+    spreadsheet_id: str
+    sheet_name: str
+    row_number: int
+    calendar_event_id: Optional[str]
+    calendar_event_link: Optional[str]
     full_name: str
-    login: Optional[str] = None
-    email: Optional[str] = None
-    system: Optional[str] = None
-    role: Optional[str] = None
-    access_level: Optional[str] = None
-    department: Optional[str] = None
-    position: Optional[str] = None
-    employee_id: Optional[str] = None
-    manager: Optional[str] = None
+    system: str
+    role: str
+    valid_until: str
+    status: str
+    created_at: datetime
     
-    # Права доступа
-    read_permission: bool = False
-    write_permission: bool = False
-    modify_permission: bool = False
-    delete_permission: bool = False
-    admin_permission: bool = False
-    privileged_access: bool = False
-    
-    # Основание и заявки
-    reason: Optional[str] = None
-    ticket_number: Optional[str] = None
-    
-    # Даты
-    granted_at: Optional[datetime] = None
-    valid_until: Optional[datetime] = None
-    last_review: Optional[datetime] = None
-    next_review: Optional[datetime] = None
-    
-    # Статусы
-    status: str = "Активен"
-    review_status: Optional[str] = None
-    next_action: Optional[str] = None
-    
-    # Владелец и ответственный
-    system_owner: Optional[str] = None
-    security_owner: Optional[str] = None
-    
-    # Calendar
-    calendar_event_id: Optional[str] = None
-    calendar_event_link: Optional[str] = None
-    
-    # Дополнительно
-    row_number: Optional[int] = None
-    added_by: Optional[str] = None
-    created_at: Optional[datetime] = None
-    comment: Optional[str] = None
-    
-    # Для ревью
-    confirmed_by_owner: Optional[bool] = None
-    keep_access: Optional[bool] = None
-    revoke_access: Optional[bool] = None
-    revoke_reason: Optional[str] = None
-    
-    # Для PCI DSS / ISO
-    system_criticality: Optional[str] = None
-    last_login_date: Optional[datetime] = None
-    corrective_action: Optional[str] = None
-    action_owner: Optional[str] = None
-    deadline: Optional[datetime] = None
-    result: Optional[str] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Преобразует запись в словарь."""
-        return {
-            "full_name": self.full_name,
-            "login": self.login,
-            "email": self.email,
-            "system": self.system,
-            "role": self.role,
-            "access_level": self.access_level,
-            "department": self.department,
-            "position": self.position,
-            "employee_id": self.employee_id,
-            "manager": self.manager,
-            "read_permission": "Да" if self.read_permission else "Нет",
-            "write_permission": "Да" if self.write_permission else "Нет",
-            "modify_permission": "Да" if self.modify_permission else "Нет",
-            "delete_permission": "Да" if self.delete_permission else "Нет",
-            "admin_permission": "Да" if self.admin_permission else "Нет",
-            "privileged_access": "Да" if self.privileged_access else "Нет",
-            "reason": self.reason,
-            "ticket_number": self.ticket_number,
-            "granted_at": self.granted_at.strftime("%Y-%m-%d") if self.granted_at else None,
-            "valid_until": self.valid_until.strftime("%Y-%m-%d") if self.valid_until else None,
-            "last_review": self.last_review.strftime("%Y-%m-%d") if self.last_review else None,
-            "next_review": self.next_review.strftime("%Y-%m-%d") if self.next_review else None,
-            "status": self.status,
-            "review_status": self.review_status,
-            "next_action": self.next_action,
-            "system_owner": self.system_owner,
-            "security_owner": self.security_owner,
-            "calendar_event_id": self.calendar_event_id,
-            "calendar_event_link": self.calendar_event_link,
-            "row_number": self.row_number,
-            "added_by": self.added_by,
-            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M") if self.created_at else None,
-            "comment": self.comment,
-            "confirmed_by_owner": "Да" if self.confirmed_by_owner else "Нет" if self.confirmed_by_owner is not None else None,
-            "keep_access": "Да" if self.keep_access else "Нет" if self.keep_access is not None else None,
-            "revoke_access": "Да" if self.revoke_access else "Нет" if self.revoke_access is not None else None,
-            "revoke_reason": self.revoke_reason,
-            "system_criticality": self.system_criticality,
-            "last_login_date": self.last_login_date.strftime("%Y-%m-%d") if self.last_login_date else None,
-            "corrective_action": self.corrective_action,
-            "action_owner": self.action_owner,
-            "deadline": self.deadline.strftime("%Y-%m-%d") if self.deadline else None,
-            "result": self.result,
-        }
+    @classmethod
+    def from_row(cls, row: tuple) -> "CreatedRecord":
+        return cls(
+            id=row[0],
+            telegram_user_id=row[1],
+            spreadsheet_id=row[2],
+            sheet_name=row[3],
+            row_number=row[4],
+            calendar_event_id=row[5],
+            calendar_event_link=row[6],
+            full_name=row[7],
+            system=row[8],
+            role=row[9],
+            valid_until=row[10],
+            status=row[11],
+            created_at=datetime.fromisoformat(row[12]) if row[12] else datetime.now(timezone.utc),
+        )
 
 
 @dataclass
-class ParsedAccessRequest:
-    """Результат парсинга запроса на доступ."""
-    full_name: Optional[str] = None
-    login: Optional[str] = None
-    email: Optional[str] = None
-    system: Optional[str] = None
-    role: Optional[str] = None
-    access_level: Optional[str] = None
-    reason: Optional[str] = None
-    ticket_number: Optional[str] = None
-    duration_days: Optional[int] = None
-    valid_until: Optional[datetime] = None
-    granted_at: Optional[datetime] = None
-    event_time: Optional[str] = None
-    action: Optional[str] = None
-    raw_text: str = ""
-    confidence: float = 0.0
-    missing_fields: List[str] = field(default_factory=list)
+class AccessHistoryEntry:
+    """Модель записи истории изменений доступов."""
+    id: Optional[int]
+    telegram_user_id: int
+    username: str
+    action: str  # CREATED_ACCESS, EXTENDED_ACCESS, REVOKED_ACCESS, etc.
+    spreadsheet_id: str
+    sheet_name: str
+    row_number: int
+    full_name: str
+    login: str
+    system: str
+    old_role: Optional[str]
+    new_role: Optional[str]
+    old_valid_until: Optional[str]
+    new_valid_until: Optional[str]
+    old_status: Optional[str]
+    new_status: Optional[str]
+    comment: str
+    created_at: datetime
     
-    def is_complete(self) -> bool:
-        """Проверяет, хватает ли данных для создания записи."""
-        required = ["full_name", "valid_until"]
-        return all(getattr(self, field) for field in required)
-
-
-@dataclass
-class ColumnMapping:
-    """Маппинг колонок."""
-    source_column: str
-    target_column: str
-    confidence: float
-    column_type: str  # тип целевой колонки
+    @classmethod
+    def from_row(cls, row: tuple) -> "AccessHistoryEntry":
+        return cls(
+            id=row[0],
+            telegram_user_id=row[1],
+            username=row[2],
+            action=row[3],
+            spreadsheet_id=row[4],
+            sheet_name=row[5],
+            row_number=row[6],
+            full_name=row[7],
+            login=row[8],
+            system=row[9],
+            old_role=row[10],
+            new_role=row[11],
+            old_valid_until=row[12],
+            new_valid_until=row[13],
+            old_status=row[14],
+            new_status=row[15],
+            comment=row[16],
+            created_at=datetime.fromisoformat(row[17]) if row[17] else datetime.now(timezone.utc),
+        )

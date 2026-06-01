@@ -1,190 +1,264 @@
-"""Клавиатуры для Telegram бота."""
+"""
+Клавиатуры для Telegram бота.
+Соответствует требованиям ISO 27001 A.9.4 (управление доступом).
+"""
 
-from aiogram.types import (
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-)
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 
-def get_main_keyboard() -> ReplyKeyboardMarkup:
-    """Основная клавиатура бота."""
-    keyboard = ReplyKeyboardMarkup(
-        resize_keyboard=True,
-        keyboard=[
-            [
-                KeyboardButton(text="📊 Создать матрицу"),
-                KeyboardButton(text="➕ Добавить доступ"),
-            ],
-            [
-                KeyboardButton(text="📁 Импорт из файла"),
-                KeyboardButton(text="📑 Мои таблицы"),
-            ],
-            [
-                KeyboardButton(text="⏰ Истекающие доступы"),
-                KeyboardButton(text="⚠️ Просроченные"),
-            ],
-            [
-                KeyboardButton(text="⚙️ Настройки"),
-                KeyboardButton(text="❓ Помощь"),
-            ],
+def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
+    """Главное меню бота."""
+    keyboard = [
+        [
+            KeyboardButton(text="📊 Создать матрицу"),
+            KeyboardButton(text="➕ Добавить доступ"),
         ],
+        [
+            KeyboardButton(text="📁 Импорт из файла"),
+            KeyboardButton(text="📋 Мои таблицы"),
+        ],
+        [
+            KeyboardButton(text="⏰ Истекающие доступы"),
+            KeyboardButton(text="⚠️ Просроченные"),
+        ],
+        [
+            KeyboardButton(text="⚙️ Настройки"),
+            KeyboardButton(text="❓ Помощь"),
+        ],
+    ]
+    
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=False,
     )
-    return keyboard
 
 
-def get_access_action_keyboard(
-    spreadsheet_id: str, sheet_name: str, row_number: int
-) -> InlineKeyboardMarkup:
-    """Клавиатура действий с доступом."""
-    keyboard = InlineKeyboardMarkup(
+def get_access_confirmation_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения создания доступа."""
+    return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="✅ Продлить",
-                    callback_data=f"extend_{spreadsheet_id}_{sheet_name}_{row_number}",
-                ),
-                InlineKeyboardButton(
-                    text="❌ Отозвать",
-                    callback_data=f"revoke_{spreadsheet_id}_{sheet_name}_{row_number}",
-                ),
+                InlineKeyboardButton(text="✅ Да, создать", callback_data="access_confirm"),
+                InlineKeyboardButton(text="✏️ Изменить", callback_data="access_edit"),
             ],
             [
-                InlineKeyboardButton(
-                    text="📊 Открыть таблицу",
-                    url=f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}",
-                ),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="access_cancel"),
             ],
         ]
     )
-    return keyboard
 
 
-def get_confirm_keyboard(action: str, data: str = "") -> InlineKeyboardMarkup:
-    """Клавиатура подтверждения."""
-    keyboard = InlineKeyboardMarkup(
+def get_matrix_template_keyboard(templates: list[dict]) -> InlineKeyboardMarkup:
+    """Клавиатура выбора шаблона матрицы."""
+    buttons = [
+        [InlineKeyboardButton(text=t["name"], callback_data=f"template_{t['key']}")]
+        for t in templates
+    ]
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_sheet_selection_keyboard(sheets: list[dict], action_prefix: str = "sheet") -> InlineKeyboardMarkup:
+    """Клавиатура выбора вкладки таблицы."""
+    buttons = [
+        [InlineKeyboardButton(text=sheet["title"], callback_data=f"{action_prefix}_{sheet['sheet_id']}")]
+        for sheet in sheets
+    ]
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_saved_sheets_keyboard(saved_sheets: list[dict]) -> InlineKeyboardMarkup:
+    """Клавиатура сохраненных таблиц."""
+    buttons = [
+        [
+            InlineKeyboardButton(text=sheet["title"], callback_data=f"open_sheet_{sheet['id']}"),
+        ]
+        for sheet in saved_sheets
+    ]
+    
+    if saved_sheets:
+        buttons.append([
+            InlineKeyboardButton(text="➕ Привязать новую таблицу", callback_data="bind_new_sheet"),
+        ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_revoke_action_keyboard(record_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура действий при отзыве доступа."""
+    return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="✅ Да, создать", callback_data=f"confirm_{action}_{data}"),
-                InlineKeyboardButton(text="✏️ Изменить", callback_data=f"edit_{action}_{data}"),
+                InlineKeyboardButton(text="🔴 Отозвать", callback_data=f"revoke_confirm_{record_id}"),
             ],
             [
-                InlineKeyboardButton(text="❌ Отмена", callback_data=f"cancel_{action}_{data}"),
+                InlineKeyboardButton(text="📅 Продлить", callback_data=f"extend_access_{record_id}"),
+                InlineKeyboardButton(text="📋 Открыть таблицу", callback_data="open_sheet"),
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action"),
             ],
         ]
     )
-    return keyboard
 
 
-def get_yes_no_keyboard(callback_prefix: str, data: str = "") -> InlineKeyboardMarkup:
-    """Клавиатура Да/Нет."""
-    keyboard = InlineKeyboardMarkup(
+def get_extend_options_keyboard(record_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура вариантов продления."""
+    return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="✅ Да", callback_data=f"{callback_prefix}_yes_{data}"),
-                InlineKeyboardButton(text="❌ Нет", callback_data=f"{callback_prefix}_no_{data}"),
+                InlineKeyboardButton(text="+1 неделя", callback_data=f"extend_7d_{record_id}"),
+                InlineKeyboardButton(text="+2 недели", callback_data=f"extend_14d_{record_id}"),
+            ],
+            [
+                InlineKeyboardButton(text="+1 месяц", callback_data=f"extend_30d_{record_id}"),
+            ],
+            [
+                InlineKeyboardButton(text="📅 Выбрать дату", callback_data=f"extend_custom_{record_id}"),
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action"),
             ],
         ]
     )
-    return keyboard
 
 
-def get_sheet_list_keyboard(sheets: list) -> InlineKeyboardMarkup:
-    """Клавиатура со списком таблиц."""
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=sheet["title"],
-                    callback_data=f"select_sheet_{sheet['spreadsheet_id']}",
-                )
-            ]
-            for sheet in sheets
-        ]
-    )
-    return keyboard
-
-
-def get_template_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура с шаблонами матриц."""
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📋 Простая матрица",
-                    callback_data="template_simple",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📋 Расширенная матрица",
-                    callback_data="template_extended",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📋 По ролям",
-                    callback_data="template_role",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📋 Ревью доступов",
-                    callback_data="template_review",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📋 PCI DSS / ISO",
-                    callback_data="template_pci",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📋 Временные доступы",
-                    callback_data="template_temporary",
-                ),
-            ],
-        ]
-    )
-    return keyboard
-
-
-def get_due_access_keyboard(
-    spreadsheet_id: str, sheet_name: str, row_number: int
-) -> InlineKeyboardMarkup:
+def get_due_access_keyboard(days: int = 7) -> InlineKeyboardMarkup:
     """Клавиатура для истекающих доступов."""
-    keyboard = InlineKeyboardMarkup(
+    return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="⏳ Продлить",
-                    callback_data=f"extend_{spreadsheet_id}_{sheet_name}_{row_number}",
-                ),
-                InlineKeyboardButton(
-                    text="🚫 Отозвать",
-                    callback_data=f"revoke_{spreadsheet_id}_{sheet_name}_{row_number}",
-                ),
+                InlineKeyboardButton(text="📅 Продлить", callback_data="bulk_extend"),
+                InlineKeyboardButton(text="🔴 Отозвать", callback_data="bulk_revoke"),
             ],
             [
-                InlineKeyboardButton(
-                    text="📊 Таблица",
-                    url=f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}",
-                ),
+                InlineKeyboardButton(text="📋 Открыть таблицу", callback_data="open_sheet"),
             ],
         ]
     )
-    return keyboard
 
 
-def get_cancel_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура отмены."""
-    keyboard = InlineKeyboardMarkup(
+def get_overdue_access_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для просроченных доступов."""
+    return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel"),
+                InlineKeyboardButton(text="🔴 Срочно отозвать", callback_data="urgent_revoke"),
+            ],
+            [
+                InlineKeyboardButton(text="📅 Продлить", callback_data="bulk_extend"),
+                InlineKeyboardButton(text="📋 Открыть таблицу", callback_data="open_sheet"),
             ],
         ]
     )
-    return keyboard
+
+
+def get_import_preview_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура предпросмотра импорта."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Импорт", callback_data="import_confirm"),
+                InlineKeyboardButton(text="✏️ Изменить маппинг", callback_data="import_edit_mapping"),
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отмена", callback_data="import_cancel"),
+            ],
+        ]
+    )
+
+
+def get_settings_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура настроек."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🕐 Время событий", callback_data="settings_event_time"),
+                InlineKeyboardButton(text="🔔 Напоминания", callback_data="settings_reminders"),
+            ],
+            [
+                InlineKeyboardButton(text="🌍 Часовой пояс", callback_data="settings_timezone"),
+            ],
+            [
+                InlineKeyboardButton(text="📊 Таблица по умолчанию", callback_data="settings_default_sheet"),
+            ],
+            [
+                InlineKeyboardButton(text="🔄 Сбросить настройки", callback_data="settings_reset"),
+            ],
+            [
+                InlineKeyboardButton(text="◀️ Назад", callback_data="main_menu"),
+            ],
+        ]
+    )
+
+
+def get_calendar_settings_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура настроек календаря."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⏰ Время напоминаний", callback_data="cal_reminder_time"),
+                InlineKeyboardButton(text="📅 Дни напоминаний", callback_data="cal_reminder_days"),
+            ],
+            [
+                InlineKeyboardButton(text="🗓️ Календарь", callback_data="cal_select"),
+            ],
+            [
+                InlineKeyboardButton(text="◀️ Назад", callback_data="settings"),
+            ],
+        ]
+    )
+
+
+def get_yes_no_keyboard(yes_callback: str, no_callback: str) -> InlineKeyboardMarkup:
+    """Универсальная клавиатура Да/Нет."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да", callback_data=yes_callback),
+                InlineKeyboardButton(text="❌ Нет", callback_data=no_callback),
+            ],
+        ]
+    )
+
+
+def get_back_keyboard(back_callback: str = "main_menu") -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой Назад."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="◀️ Назад", callback_data=back_callback),
+            ],
+        ]
+    )
+
+
+def get_templates_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура просмотра шаблонов."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📋 Простая матрица", callback_data="view_template_simple"),
+            ],
+            [
+                InlineKeyboardButton(text="📋 Расширенная матрица", callback_data="view_template_extended"),
+            ],
+            [
+                InlineKeyboardButton(text="📋 По ролям", callback_data="view_template_role"),
+            ],
+            [
+                InlineKeyboardButton(text="📋 Ревью доступов", callback_data="view_template_review"),
+            ],
+            [
+                InlineKeyboardButton(text="📋 PCI DSS / ISO", callback_data="view_template_pci"),
+            ],
+            [
+                InlineKeyboardButton(text="📋 Временные доступы", callback_data="view_template_temporary"),
+            ],
+            [
+                InlineKeyboardButton(text="◀️ Назад", callback_data="main_menu"),
+            ],
+        ]
+    )
