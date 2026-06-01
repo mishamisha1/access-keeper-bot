@@ -480,3 +480,7 @@ class GoogleSheetsService:
 
 # Глобальный экземпляр
 sheets_service = GoogleSheetsService()
+
+
+# Псевдоним для совместимости
+SheetsService = GoogleSheetsService

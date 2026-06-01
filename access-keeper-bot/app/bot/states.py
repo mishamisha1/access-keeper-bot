@@ -16,6 +16,21 @@ class AccessStates(StatesGroup):
     waiting_for_reason = State()  # Ожидание основания
     waiting_for_confirmation = State()  # Ожидание подтверждения
     waiting_for_comment = State()  # Ожидание комментария
+    
+    # Quick access flow
+    confirming_creation = State()  # Подтверждение создания из /access
+    
+    # Revoke flow
+    searching_for_revoke = State()  # Поиск для отзыва
+    confirming_revoke = State()  # Подтверждение отзыва
+    
+    # Extend flow
+    searching_for_extend = State()  # Поиск для продления
+    entering_extend_duration = State()  # Ввод срока продления
+    confirming_extend = State()  # Подтверждение продления
+    
+    # Settings
+    setting_reminder_days = State()  # Настройка напоминаний
 
 
 class MatrixStates(StatesGroup):

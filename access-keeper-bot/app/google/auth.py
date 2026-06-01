@@ -307,3 +307,30 @@ class GoogleAuth:
 
 # Глобальный экземпляр
 google_auth = GoogleAuth()
+
+
+def get_authorized_user():
+    """
+    Получить авторизованные учетные данные.
+    
+    Returns:
+        Credentials объект или None если не авторизован
+    """
+    if google_auth.ensure_authenticated():
+        return google_auth.credentials
+    return None
+
+
+def get_sheets_service():
+    """Получить сервис Google Sheets."""
+    return google_auth.sheets_service
+
+
+def get_calendar_service():
+    """Получить сервис Google Calendar."""
+    return google_auth.calendar_service
+
+
+def get_drive_service():
+    """Получить сервис Google Drive."""
+    return google_auth.drive_service

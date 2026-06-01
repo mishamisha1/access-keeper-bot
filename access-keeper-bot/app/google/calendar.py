@@ -359,3 +359,7 @@ class GoogleCalendarService:
 
 # Глобальный экземпляр
 calendar_service = GoogleCalendarService()
+
+
+# Псевдоним для совместимости
+CalendarService = GoogleCalendarService

@@ -236,29 +236,109 @@ def get_back_keyboard(back_callback: str = "main_menu") -> InlineKeyboardMarkup:
 
 
 def get_templates_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура просмотра шаблонов."""
+    """Клавиатура выбора шаблона для создания матрицы."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="📋 Простая матрица", callback_data="view_template_simple"),
+                InlineKeyboardButton(text="1️⃣ Простая матрица", callback_data="template_simple"),
             ],
             [
-                InlineKeyboardButton(text="📋 Расширенная матрица", callback_data="view_template_extended"),
+                InlineKeyboardButton(text="2️⃣ Расширенная матрица", callback_data="template_extended"),
             ],
             [
-                InlineKeyboardButton(text="📋 По ролям", callback_data="view_template_role"),
+                InlineKeyboardButton(text="3️⃣ По ролям", callback_data="template_role"),
             ],
             [
-                InlineKeyboardButton(text="📋 Ревью доступов", callback_data="view_template_review"),
+                InlineKeyboardButton(text="4️⃣ Ревью доступов", callback_data="template_review"),
             ],
             [
-                InlineKeyboardButton(text="📋 PCI DSS / ISO", callback_data="view_template_pci"),
+                InlineKeyboardButton(text="5️⃣ PCI DSS / ISO", callback_data="template_pci_iso"),
             ],
             [
-                InlineKeyboardButton(text="📋 Временные доступы", callback_data="view_template_temporary"),
-            ],
-            [
-                InlineKeyboardButton(text="◀️ Назад", callback_data="main_menu"),
+                InlineKeyboardButton(text="6️⃣ Временные доступы", callback_data="template_temporary"),
             ],
         ]
     )
+
+
+def get_main_keyboard() -> ReplyKeyboardMarkup:
+    """Главное меню бота."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📊 Создать матрицу")],
+            [KeyboardButton(text="➕ Добавить доступ")],
+            [KeyboardButton(text="📁 Импорт из файла")],
+            [KeyboardButton(text="📋 Мои таблицы")],
+            [KeyboardButton(text="⚙️ Настройки")],
+            [KeyboardButton(text="❓ Помощь")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def get_confirmation_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения действия."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да, создать", callback_data="confirm_create"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action"),
+            ],
+        ]
+    )
+
+
+def get_import_preview_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура предпросмотра импорта."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Импорт", callback_data="confirm_import"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action"),
+            ],
+        ]
+    )
+
+
+def get_revoke_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура отзыва доступа."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔴 Отозвать", callback_data="confirm_revoke"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action"),
+            ],
+        ]
+    )
+
+
+def get_extend_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура продления доступа."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📅 Продлить", callback_data="confirm_extend"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action"),
+            ],
+        ]
+    )
+
+
+def get_access_due_keyboard(sheet_url: str) -> InlineKeyboardMarkup:
+    """Клавиатура для истекающих доступов."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📋 Открыть таблицу", url=sheet_url),
+            ],
+        ]
+    )
+
+
+def get_sheet_selection_keyboard(sheets: list) -> InlineKeyboardMarkup:
+    """Клавиатура выбора вкладки таблицы."""
+    buttons = [
+        [InlineKeyboardButton(text=sheet["title"], callback_data=f"sheet_{sheet['id']}")]
+        for sheet in sheets
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

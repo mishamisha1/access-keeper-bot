@@ -1,225 +1,183 @@
-"""File parser interface and factory."""
+"""
+Универсальный парсер файлов для импорта матриц доступа.
+Поддерживает: Excel (.xlsx, .xls), CSV, TXT, DOCX, PDF.
+Интегрирует rapidfuzz для интеллектуального маппинга колонок.
+Соответствует ISO 27001 A.12.4 (Логирование и мониторинг).
+"""
 
 import logging
-from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Any, Optional
 
-import pandas as pd
+# Парсеры специфичных форматов
+from .excel_parser import ExcelParser
+from .csv_parser import CSVParser
+from .docx_parser import DocxParser
+from .pdf_parser import PDFParser
+from .mapper import ColumnMapper
 
 logger = logging.getLogger(__name__)
 
 
-class ParseResult:
-    """Result of parsing a file."""
-    
-    def __init__(self, 
-                 headers: List[str],
-                 rows: List[Dict[str, Any]],
-                 row_count: int,
-                 file_type: str,
-                 warnings: Optional[List[str]] = None):
-        self.headers = headers
-        self.rows = rows
-        self.row_count = row_count
-        self.file_type = file_type
-        self.warnings = warnings or []
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'headers': self.headers,
-            'rows': self.rows,
-            'row_count': self.row_count,
-            'file_type': self.file_type,
-            'warnings': self.warnings
+class FileParser:
+    """
+    Универсальный интерфейс для парсинга файлов различных форматов.
+    Автоматически определяет тип файла и выбирает соответствующий парсер.
+    """
+
+    SUPPORTED_EXTENSIONS = {
+        '.xlsx': 'excel',
+        '.xls': 'excel',
+        '.csv': 'csv',
+        '.txt': 'text',
+        '.docx': 'docx',
+        '.pdf': 'pdf'
+    }
+
+    def __init__(self):
+        self.mapper = ColumnMapper()
+        self.parsers = {
+            'excel': ExcelParser(),
+            'csv': CSVParser(),
+            'docx': DocxParser(),
+            'pdf': PDFParser()
         }
 
+    def detect_file_type(self, file_path: str) -> Optional[str]:
+        """Определяет тип файла по расширению."""
+        ext = Path(file_path).suffix.lower()
+        return self.SUPPORTED_EXTENSIONS.get(ext)
 
-class BaseFileParser(ABC):
-    """Abstract base class for file parsers."""
-    
-    @abstractmethod
-    def parse(self, file_path: Path) -> ParseResult:
-        """Parse the file and return structured data."""
-        pass
-    
-    @abstractmethod
-    def can_parse(self, file_path: Path) -> bool:
-        """Check if this parser can handle the file."""
-        pass
+    def parse_file(self, file_path: str) -> Dict[str, Any]:
+        """
+        Парсит файл и возвращает структурированные данные.
+        
+        Returns:
+            Dict с ключами:
+            - 'headers': список заголовков
+            - 'rows': список строк данных
+            - 'mapped_data': данные с примененным маппингом
+            - 'mapping_confidence': уверенность маппинга
+            - 'errors': список ошибок
+        """
+        file_path_obj = Path(file_path)
+        
+        if not file_path_obj.exists():
+            raise FileNotFoundError(f"Файл не найден: {file_path}")
 
+        file_type = self.detect_file_type(str(file_path))
+        
+        if not file_type:
+            raise ValueError(f"Неподдерживаемый формат файла: {file_path_obj.suffix}")
 
-class ExcelParser(BaseFileParser):
-    """Parser for Excel files (.xlsx, .xls)."""
-    
-    def can_parse(self, file_path: Path) -> bool:
-        return file_path.suffix.lower() in ['.xlsx', '.xls']
-    
-    def parse(self, file_path: Path) -> ParseResult:
-        """Parse Excel file using pandas."""
-        warnings = []
+        logger.info(f"Парсинг файла: {file_path}, тип: {file_type}")
+
+        try:
+            if file_type == 'text':
+                # Текстовые файлы обрабатываем как CSV или свободный текст
+                data = self._parse_text_file(file_path)
+            else:
+                parser = self.parsers[file_type]
+                data = parser.parse(str(file_path))
+
+            # Применяем интеллектуальный маппинг
+            mapped_result = self.mapper.map_columns(data)
+            
+            result = {
+                'original_headers': data.get('headers', []),
+                'headers': mapped_result['mapped_headers'],
+                'rows': data.get('rows', []),
+                'mapped_data': mapped_result['mapped_rows'],
+                'mapping_confidence': mapped_result['confidence'],
+                'mapping_details': mapped_result['details'],
+                'row_count': len(data.get('rows', [])),
+                'errors': data.get('errors', []),
+                'warnings': mapped_result.get('warnings', [])
+            }
+
+            logger.info(f"Успешно распарсен файл: {result['row_count']} строк, "
+                       f"уверенность маппинга: {result['mapping_confidence']:.2f}")
+            
+            return result
+
+        except Exception as e:
+            logger.error(f"Ошибка при парсинге файла {file_path}: {str(e)}")
+            raise
+
+    def _parse_text_file(self, file_path: str) -> Dict[str, Any]:
+        """Парсинг текстовых файлов (CSV-like или свободный текст)."""
+        import pandas as pd
         
         try:
-            # Read all sheets
-            excel_file = pd.ExcelFile(file_path)
-            sheet_names = excel_file.sheet_names
+            # Пробуем прочитать как CSV с разными разделителями
+            for sep in [',', ';', '\t', '|']:
+                try:
+                    df = pd.read_csv(file_path, sep=sep, encoding='utf-8')
+                    return {
+                        'headers': list(df.columns),
+                        'rows': df.values.tolist(),
+                        'errors': []
+                    }
+                except:
+                    continue
             
-            if len(sheet_names) > 1:
-                warnings.append(f"Файл содержит {len(sheet_names)} листов. Используется первый лист: {sheet_names[0]}")
+            # Если не CSV, читаем как простой текст
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
             
-            # Read first sheet
-            df = pd.read_excel(excel_file, sheet_name=sheet_names[0])
+            if not lines:
+                return {'headers': [], 'rows': [], 'errors': ['Пустой файл']}
             
-            # Clean data
-            df = df.dropna(how='all')  # Remove completely empty rows
-            df = df.fillna('')  # Replace NaN with empty string
-            
-            # Convert to list of dicts
-            rows = df.to_dict('records')
-            headers = [str(col) for col in df.columns]
-            
-            logger.info(f"Parsed Excel file {file_path}: {len(rows)} rows, {len(headers)} columns")
-            
-            return ParseResult(
-                headers=headers,
-                rows=rows,
-                row_count=len(rows),
-                file_type='excel',
-                warnings=warnings
-            )
-            
-        except Exception as e:
-            logger.error(f"Failed to parse Excel file {file_path}: {e}")
-            raise ValueError(f"Не удалось прочитать Excel файл: {str(e)}")
-
-
-class CSVParser(BaseFileParser):
-    """Parser for CSV files."""
-    
-    def can_parse(self, file_path: Path) -> bool:
-        return file_path.suffix.lower() == '.csv'
-    
-    def parse(self, file_path: Path) -> ParseResult:
-        """Parse CSV file with encoding detection."""
-        warnings = []
-        
-        # Try different encodings
-        encodings = ['utf-8', 'cp1251', 'latin1', 'utf-8-sig']
-        df = None
-        
-        for encoding in encodings:
-            try:
-                df = pd.read_csv(file_path, encoding=encoding)
-                logger.debug(f"Successfully parsed CSV with encoding: {encoding}")
-                break
-            except UnicodeDecodeError:
-                continue
-        
-        if df is None:
-            raise ValueError("Не удалось определить кодировку CSV файла")
-        
-        # Clean data
-        df = df.dropna(how='all')
-        df = df.fillna('')
-        
-        rows = df.to_dict('records')
-        headers = [str(col) for col in df.columns]
-        
-        logger.info(f"Parsed CSV file {file_path}: {len(rows)} rows")
-        
-        return ParseResult(
-            headers=headers,
-            rows=rows,
-            row_count=len(rows),
-            file_type='csv',
-            warnings=warnings
-        )
-
-
-class TextParser(BaseFileParser):
-    """Parser for plain text files."""
-    
-    def can_parse(self, file_path: Path) -> bool:
-        return file_path.suffix.lower() == '.txt'
-    
-    def parse(self, file_path: Path) -> ParseResult:
-        """Parse text file, trying to detect structure."""
-        warnings = []
-        rows = []
-        headers = []
-        
-        encodings = ['utf-8', 'cp1251', 'latin1']
-        content = None
-        
-        for encoding in encodings:
-            try:
-                with open(file_path, 'r', encoding=encoding) as f:
-                    content = f.read()
-                break
-            except UnicodeDecodeError:
-                continue
-        
-        if not content:
-            raise ValueError("Не удалось прочитать текстовый файл")
-        
-        lines = content.strip().split('\n')
-        
-        if not lines:
-            return ParseResult(headers=[], rows=[], row_count=0, file_type='txt')
-        
-        # Try to detect if it's CSV-like (has delimiters)
-        delimiters = [',', ';', '\t', '|']
-        detected_delimiter = None
-        
-        first_line = lines[0]
-        for delim in delimiters:
-            if delim in first_line:
-                detected_delimiter = delim
-                break
-        
-        if detected_delimiter:
-            # Parse as delimited text
-            headers = [h.strip() for h in lines[0].split(detected_delimiter)]
-            
+            headers = [h.strip() for h in lines[0].split(',')]
+            rows = []
             for line in lines[1:]:
                 if line.strip():
-                    values = [v.strip() for v in line.split(detected_delimiter)]
-                    if len(values) == len(headers):
-                        row = dict(zip(headers, values))
-                        rows.append(row)
-                    else:
-                        warnings.append(f"Строка с неправильным количеством полей: {line[:50]}")
-        else:
-            # Free-form text - each line is a record
-            headers = ['text']
-            for line in lines:
-                if line.strip():
-                    rows.append({'text': line.strip()})
-            warnings.append("Текстовый файл не имеет структурированного формата")
+                    rows.append([cell.strip() for cell in line.split(',')])
+            
+            return {
+                'headers': headers,
+                'rows': rows,
+                'errors': []
+            }
+            
+        except Exception as e:
+            return {
+                'headers': [],
+                'rows': [],
+                'errors': [f"Ошибка чтения текста: {str(e)}"]
+            }
+
+    def get_mapping_preview(self, file_path: str) -> Dict[str, Any]:
+        """Возвращает превью маппинга для подтверждения пользователем."""
+        parsed_data = self.parse_file(file_path)
         
-        logger.info(f"Parsed TXT file {file_path}: {len(rows)} rows")
+        preview = {
+            'total_rows': parsed_data['row_count'],
+            'columns_found': len(parsed_data['headers']),
+            'mapped_columns': {
+                orig: mapped 
+                for orig, mapped in zip(
+                    parsed_data['original_headers'], 
+                    parsed_data['headers']
+                )
+                if orig != mapped
+            },
+            'confidence_score': parsed_data['mapping_confidence'],
+            'sample_rows': parsed_data['mapped_data'][:3],  # Первые 3 строки
+            'warnings': parsed_data.get('warnings', [])
+        }
         
-        return ParseResult(
-            headers=headers,
-            rows=rows,
-            row_count=len(rows),
-            file_type='txt',
-            warnings=warnings
-        )
-
-
-def get_parser_for_file(file_path: Path) -> BaseFileParser:
-    """Get appropriate parser for file type."""
-    parsers = [ExcelParser(), CSVParser(), TextParser()]
-    
-    for parser in parsers:
-        if parser.can_parse(file_path):
-            return parser
-    
-    raise ValueError(f"Неподдерживаемый тип файла: {file_path.suffix}")
-
-
-def parse_file(file_path: Path) -> ParseResult:
-    """Parse file using appropriate parser."""
-    parser = get_parser_for_file(file_path)
-    return parser.parse(file_path)
+        # Проверка на отсутствие критических колонок
+        critical_cols = ['full_name', 'login', 'system', 'status']
+        mapped_headers = parsed_data['headers']
+        missing_critical = [
+            col for col in critical_cols 
+            if col not in mapped_headers
+        ]
+        
+        if missing_critical:
+            preview['warnings'].append(
+                f"Отсутствуют критические колонки: {', '.join(missing_critical)}"
+            )
+        
+        return preview

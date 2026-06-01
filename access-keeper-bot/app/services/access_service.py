@@ -5,7 +5,8 @@
 """
 
 from datetime import datetime, timedelta
-from typing import Optional, Any
+from typing import Optional, Any, Dict, List
+import re
 
 from app.logging_config import get_logger
 from app.config import config
@@ -19,6 +20,15 @@ from app.templates.matrix_templates import matrix_templates
 logger = get_logger(__name__)
 
 
+# Привилегированные роли (ISO 27001 A.9.2.3)
+PRIVILEGED_ROLE_PATTERNS = [
+    r'admin', r'administrator', r'root', r'superuser', r'owner',
+    r'privileged', r'domain\s*admin', r'global\s*admin', r'security\s*admin',
+    r'sysadmin', r'backup\s*admin', r'database\s*admin', r'network\s*admin',
+    r'power\s*user', r'full\s*access', r'sudo', r'elevated'
+]
+
+
 class AccessService:
     """Сервис для управления жизненным циклом доступов."""
     
@@ -26,6 +36,69 @@ class AccessService:
         self.sheets = sheets_service
         self.calendar = calendar_service
         self.date_service = date_service
+    
+    @staticmethod
+    def detect_privileged_access(role: str, access_level: str = "") -> bool:
+        """
+        Определяет, является ли доступ привилегированным.
+        Соответствует ISO 27001 A.9.2.3 (Управление привилегиями).
+        
+        Args:
+            role: Роль пользователя
+            access_level: Уровень доступа
+            
+        Returns:
+            True если доступ привилегированный
+        """
+        if not role and not access_level:
+            return False
+        
+        text_to_check = f"{role} {access_level}".lower()
+        
+        for pattern in PRIVILEGED_ROLE_PATTERNS:
+            if re.search(pattern, text_to_check, re.IGNORECASE):
+                logger.info(f"Обнаружен привилегированный доступ по паттерну '{pattern}'")
+                return True
+        
+        return False
+    
+    @staticmethod
+    def normalize_status(status: str) -> str:
+        """
+        Нормализация статусов доступа.
+        Соответствует ISO 27001 A.12.4 (Логирование и мониторинг).
+        """
+        if not status:
+            return "Не указан"
+        
+        status_lower = status.lower().strip()
+        
+        # Активные статусы
+        if status_lower in ['active', 'enabled', 'активен', 'активный', 'да', 'yes', 'true']:
+            return "Активен"
+        
+        # Отключенные
+        if status_lower in ['disabled', 'отключен', 'нет', 'no', 'false', 'inactive']:
+            return "Отключен"
+        
+        # На ревью
+        if status_lower in ['review', 'на проверке', 'ревью', 'pending review', 'на ревью']:
+            return "На ревью"
+        
+        # Временный
+        if status_lower in ['temporary', 'временный', 'temp', 'врем']:
+            return "Временный"
+        
+        # Отозван
+        if status_lower in ['revoked', 'отозван', 'отменен', 'cancelled']:
+            return "Отозван"
+        
+        # Просрочен
+        if status_lower in ['overdue', 'просрочен', 'expired', 'истек']:
+            return "Просрочен"
+        
+        # По умолчанию
+        return status.strip().title()
     
     async def create_access_from_parsed(
         self,

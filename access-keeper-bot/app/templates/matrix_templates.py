@@ -294,3 +294,8 @@ class MatrixTemplates:
 
 # Глобальный экземпляр
 matrix_templates = MatrixTemplates()
+
+
+def get_template_columns(template_id: str) -> list[str]:
+    """Получить колонки шаблона по ID."""
+    return matrix_templates.get_template_columns(template_id)

@@ -1,7 +1,10 @@
-"""Intelligent column mapping using fuzzy matching."""
+"""
+Intelligent column mapping using fuzzy matching.
+Соответствует ISO 27001 A.12.4 (Логирование и мониторинг).
+"""
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 from rapidfuzz import fuzz, process
 
@@ -146,38 +149,92 @@ class ColumnMapper:
         logger.debug(f"No confident match for column: {column_name}")
         return None, 0
     
-    def map_columns(self, columns: List[str]) -> Dict[str, str]:
+    def map_columns(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Map multiple columns to standard field names.
+        Map columns in parsed data to standard field names.
         
         Args:
-            columns: List of original column names
+            data: Dict with 'headers' and 'rows' keys
             
         Returns:
-            Dictionary mapping original names to standard names
+            Dict with mapped headers, mapped rows, confidence and details
         """
+        headers = data.get('headers', [])
+        rows = data.get('rows', [])
+        
+        if not headers:
+            return {
+                'mapped_headers': [],
+                'mapped_rows': [],
+                'confidence': 0.0,
+                'details': {},
+                'warnings': ['Отсутствуют заголовки']
+            }
+        
+        # Map each header
         mapping = {}
         unmapped = []
+        confidence_scores = []
         
-        for col in columns:
+        for col in headers:
             mapped_field, confidence = self.map_column(col)
             
             if mapped_field:
                 # Only add if we haven't mapped this field yet
                 if mapped_field not in mapping.values():
                     mapping[col] = mapped_field
+                    confidence_scores.append(confidence)
                 else:
-                    # Duplicate mapping - keep the one with higher confidence
+                    # Duplicate mapping
                     unmapped.append((col, mapped_field, confidence))
             else:
                 unmapped.append((col, None, 0))
         
+        # Create mapped headers list
+        mapped_headers = []
+        for col in headers:
+            if col in mapping:
+                mapped_headers.append(mapping[col])
+            else:
+                # Keep original name if no mapping found
+                mapped_headers.append(col)
+        
+        # Create mapped rows (same as original, just reordered conceptually)
+        mapped_rows = rows
+        
+        # Calculate average confidence
+        avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
+        
+        result = {
+            'mapped_headers': mapped_headers,
+            'mapped_rows': mapped_rows,
+            'confidence': avg_confidence / 100.0,  # Normalize to 0-1
+            'details': {
+                'mapping': mapping,
+                'unmapped': [u[0] for u in unmapped],
+                'total_columns': len(headers),
+                'mapped_columns': len(mapping)
+            },
+            'warnings': []
+        }
+        
         if unmapped:
-            logger.warning(
-                f"Unmapped or duplicate columns: {[u[0] for u in unmapped]}"
+            result['warnings'].append(
+                f"Не сопоставлены колонки: {', '.join([u[0] for u in unmapped[:5]])}"
+                + (f" и еще {len(unmapped)-5}" if len(unmapped) > 5 else "")
             )
         
-        return mapping
+        if avg_confidence < 70:
+            result['warnings'].append(
+                f"Низкая уверенность маппинга: {avg_confidence:.1f}%. Рекомендуется ручная проверка."
+            )
+        
+        logger.info(
+            f"Маппинг колонок: {len(mapping)} из {len(headers)} сопоставлено, "
+            f"уверенность: {avg_confidence:.1f}%"
+        )
+        
+        return result
     
     def get_suggested_mapping(self, column_name: str) -> List[Tuple[str, int]]:
         """

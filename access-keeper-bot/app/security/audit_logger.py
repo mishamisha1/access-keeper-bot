@@ -33,7 +33,8 @@ class AuditEvent:
 class AuditLogger:
     """Immutable audit logger for ISO 27001 compliance."""
 
-    def __init__(self, log_dir: str):
+    def __init__(self, db=None, log_dir: str = "data/audit_logs"):
+        self.db = db
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
